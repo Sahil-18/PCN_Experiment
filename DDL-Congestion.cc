@@ -15,6 +15,28 @@ using namespace ns3;
 std::ofstream queueSizes;
 std::ofstream throughput;
 std::map<FlowId, uint32_t> TotalRxBytes;
+std::vector<ApplicationContainer> onOffApps;
+std::vector<ApplicationContainer> sinkApps;
+
+void createApps(uint32_t port, Ipv4Address destIP, Ptr<Node> source, Ptr<Node> dest, uint32_t dataRate, uint32_t packetSize, double startTime, double stopTime, int onTime, int offTime){
+    OnOffHelper onOffHelper("ns3::TcpSocketFactory", InetSocketAddress(destIP, port));
+    onOffHelper.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=" + std::to_string(onTime) + "]"));
+    onOffHelper.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=" + std::to_string(offTime) + "]"));
+    onOffHelper.SetAttribute("DataRate", StringValue(std::to_string(dataRate) + "Mbps"));
+    onOffHelper.SetAttribute("PacketSize", UintegerValue(packetSize));
+
+    ApplicationContainer app = onOffHelper.Install(source);
+    app.Start(Seconds(startTime));
+    app.Stop(Seconds(stopTime));
+
+    PacketSinkHelper sinkHelper("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
+    ApplicationContainer sinkApp = sinkHelper.Install(dest);
+    sinkApp.Start(Seconds(startTime));
+    sinkApp.Stop(Seconds(stopTime));
+
+    onOffApps.push_back(app);
+    sinkApps.push_back(sinkApp);
+}
 
 void LogQueueSize(Ptr<QueueDisc> queueDisc){
     uint32_t qsize = queueDisc->GetNPackets();
@@ -103,117 +125,13 @@ int main(){
 
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
-    // Worker send data to PS with 900 Mbps for 0.5 seconds and 2 seconds off
-    // Once the PS receives data, it pauses for 0.2 seconds and sends data to 
-    // both worker nodes with 900 Mbps for 0.5 seconds and 2 seconds off
 
-    // Worker 1 to PS 
-    uint16_t port = 9;
-    OnOffHelper onOffHelper1("ns3::TcpSocketFactory", InetSocketAddress(psri.GetAddress(0), port));
-    onOffHelper1.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOffHelper1.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=2]"));
-    onOffHelper1.SetAttribute("DataRate", StringValue("1Gbps"));
-    onOffHelper1.SetAttribute("PacketSize", UintegerValue(1500));
-
-    ApplicationContainer worker1ToPS = onOffHelper1.Install(worker.Get(0));
-    worker1ToPS.Start(Seconds(0.0));
-    worker1ToPS.Stop(Seconds(10.0));
-
-
-    PacketSinkHelper sinkHelper1("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    ApplicationContainer sinkApp1 = sinkHelper1.Install(ps.Get(0));
-    sinkApp1.Start(Seconds(0.0));
-    sinkApp1.Stop(Seconds(10.0));
-
-    // Worker 2 to PS
-    port++;
-    OnOffHelper onOffHelper2("ns3::TcpSocketFactory", InetSocketAddress(psri.GetAddress(0), port));
-    onOffHelper2.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOffHelper2.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=2]"));
-    onOffHelper2.SetAttribute("DataRate", StringValue("1Gbps"));
-    onOffHelper2.SetAttribute("PacketSize", UintegerValue(1500));
-
-    ApplicationContainer worker2ToPS = onOffHelper2.Install(worker.Get(1));
-    worker2ToPS.Start(Seconds(0.0));
-    worker2ToPS.Stop(Seconds(10.0));
-
-    PacketSinkHelper sinkHelper2("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    ApplicationContainer sinkApp2 = sinkHelper2.Install(ps.Get(0));
-    sinkApp2.Start(Seconds(0.0));
-    sinkApp2.Stop(Seconds(10.0));
-
-    // PS to Worker 1
-    port++;
-    OnOffHelper onOffHelper3("ns3::TcpSocketFactory", InetSocketAddress(w1ri.GetAddress(0), port));
-    onOffHelper3.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOffHelper3.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=2]"));
-    onOffHelper3.SetAttribute("DataRate", StringValue("1Gbps"));
-    onOffHelper3.SetAttribute("PacketSize", UintegerValue(1500));
-
-    ApplicationContainer psToWorker1 = onOffHelper3.Install(ps.Get(0));
-    psToWorker1.Start(Seconds(1.2));
-    psToWorker1.Stop(Seconds(10.0));
-
-    PacketSinkHelper sinkHelper3("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    ApplicationContainer sinkApp3 = sinkHelper3.Install(worker.Get(0));
-    sinkApp3.Start(Seconds(1.2));
-    sinkApp3.Stop(Seconds(10.0));
-
-    // PS to Worker 2
-    port++;
-    OnOffHelper onOffHelper4("ns3::TcpSocketFactory", InetSocketAddress(w2ri.GetAddress(0), port));
-    onOffHelper4.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    onOffHelper4.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=2]"));
-    onOffHelper4.SetAttribute("DataRate", StringValue("1Gbps"));
-    onOffHelper4.SetAttribute("PacketSize", UintegerValue(1500));
-
-    ApplicationContainer psToWorker2 = onOffHelper4.Install(ps.Get(0));
-    psToWorker2.Start(Seconds(1.2));
-    psToWorker2.Stop(Seconds(10.0));
-
-    PacketSinkHelper sinkHelper4("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    ApplicationContainer sinkApp4 = sinkHelper4.Install(worker.Get(1));
-    sinkApp4.Start(Seconds(1.2));
-    sinkApp4.Stop(Seconds(10.0));
-
-    // Background sends data to each other continuously for 10 seconds with 100 Mbps
-    // port++;
-    // OnOffHelper onOffHelper5("ns3::TcpSocketFactory", InetSocketAddress(rb2i.GetAddress(1), port));
-    // onOffHelper5.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    // onOffHelper5.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    // onOffHelper5.SetAttribute("DataRate", StringValue("500Mbps"));
-    // onOffHelper5.SetAttribute("PacketSize", UintegerValue(1500));
-
-    // ApplicationContainer background1 = onOffHelper5.Install(background.Get(0));
-    // background1.Start(Seconds(0.0));
-    // background1.Stop(Seconds(10.0));
-
-    // PacketSinkHelper sinkHelper5("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    // ApplicationContainer sinkApp5 = sinkHelper5.Install(background.Get(1));
-    // sinkApp5.Start(Seconds(0.0));
-    // sinkApp5.Stop(Seconds(10.0));
-
-    // port++;
-    // OnOffHelper onOffHelper6("ns3::TcpSocketFactory", InetSocketAddress(rb1i.GetAddress(1), port));
-    // onOffHelper6.SetAttribute("OnTime", StringValue("ns3::ConstantRandomVariable[Constant=1]"));
-    // onOffHelper6.SetAttribute("OffTime", StringValue("ns3::ConstantRandomVariable[Constant=0]"));
-    // onOffHelper6.SetAttribute("DataRate", StringValue("500Mbps"));
-    // onOffHelper6.SetAttribute("PacketSize", UintegerValue(1500));
-
-    // ApplicationContainer background2 = onOffHelper6.Install(background.Get(1));
-    // background2.Start(Seconds(0.0));
-    // background2.Stop(Seconds(10.0));
-    
-    // PacketSinkHelper sinkHelper6("ns3::TcpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), port));
-    // ApplicationContainer sinkApp6 = sinkHelper6.Install(background.Get(0));
-    // sinkApp6.Start(Seconds(0.0));
-    // sinkApp6.Stop(Seconds(10.0));
 
     queueSizes.open("queueSizes.csv");
-    queueSizes << "Time(s),QueueSize(Packets)\n";
+    queueSizes << "Time(ms),QueueSize(Packets)\n";
 
     throughput.open("throughput.csv");
-    throughput << "Time(s),Source IP, Source Port, Dest IP, Dest Port,Throughput(Mbps)\n";
+    throughput << "Time(ms),Source IP, Source Port, Dest IP, Dest Port,Throughput(Mbps)\n";
 
     FlowMonitorHelper flowmon;
     Ptr<FlowMonitor> monitor = flowmon.InstallAll();
