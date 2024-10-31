@@ -107,17 +107,26 @@ int main(){
     router.Create(2);
     background.Create(4);
 
-    Config::SetDefault("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpCubic"));
+    Config::SetDefault("ns3::TcpL4Protocol::SocketType", StringValue("ns3::TcpDctcp"));
     Config::SetDefault("ns3::TcpSocket::InitialCwnd", UintegerValue(10));
     Config::SetDefault("ns3::TcpSocket::SegmentSize", UintegerValue(1448));
     Config::SetDefault("ns3::TcpSocket::DelAckCount", UintegerValue(1));
     GlobalValue::Bind("ChecksumEnabled", BooleanValue(true));
 
+    Config::SetDefault("ns3::RedQueueDisc::UseEcn", BooleanValue(true));
+    Config::SetDefault("ns3::RedQueueDisc::UseHardDrop", BooleanValue(false));
+    Config::SetDefault("ns3::RedQueueDisc::Gentle", BooleanValue(true));
+    Config::SetDefault("ns3::RedQueueDisc::MinTh", DoubleValue(40));
+    Config::SetDefault("ns3::RedQueueDisc::MaxTh", DoubleValue(70));
+    Config::SetDefault("ns3::RedQueueDisc::MaxSize", QueueSizeValue(QueueSize("100p")));
+    Config::SetDefault("ns3::RedQueueDisc::QW", DoubleValue(0.4));
+    Config::SetDefault("ns3::RedQueueDisc::MeanPktSize", DoubleValue(1500));
+    
+
     // Create links
     PointToPointHelper p2p;
     p2p.SetDeviceAttribute("DataRate", StringValue("1Gbps"));
     p2p.SetChannelAttribute("Delay", StringValue("200us"));
-    p2p.SetQueue("ns3::DropTailQueue", "MaxSize", StringValue("100p"));
 
     // Connect nodes
     NetDeviceContainer w1r1, w2r1, r1r2, psr2, b1r1, b2r1, b3r2, b4r2;
@@ -143,7 +152,16 @@ int main(){
 
     // Install Traffic Control for observing queue sizes
     TrafficControlHelper tch;
-    tch.SetRootQueueDisc("ns3::PfifoFastQueueDisc", "MaxSize", StringValue("100p"));
+    tch.SetRootQueueDisc("ns3::RedQueueDisc",
+                        "MinTh", DoubleValue(40),
+                        "MaxTh", DoubleValue(70),
+                        "LinkBandwidth", StringValue("1Gbps"),
+                        "LinkDelay", StringValue("200us"),
+                        "QueueLimit", UintegerValue(100),
+                        "MeanPktSize", DoubleValue(1500),
+                        "Gentle", BooleanValue(true),
+                        "UseEcn", BooleanValue(true),
+                        "QW", DoubleValue(0.4));
     
     QueueDiscContainer qd1 = tch.Install(r1r2);
     QueueDiscContainer qd2 = tch.Install(psr2);
@@ -197,13 +215,13 @@ int main(){
     createBackgroundApps(InetSocketAddress(b4r2Iface.GetAddress(1), port), background.Get(1), background.Get(3), 175, 1500, 0.5, 50.0, 1, 0);
 
 
-    q1Size.open("q1Size.csv");
+    q1Size.open("q1Size_ECN.csv");
     q1Size << "Time(ms),QueueSize(Packets)\n";
 
-    q2Size.open("q2Size.csv");
+    q2Size.open("q2Size_ECN.csv");
     q2Size << "Time(ms),QueueSize(Packets)\n";
 
-    throughput.open("throughput.csv");
+    throughput.open("throughput_ECN.csv");
     throughput << "Time(ms),Source IP, Source Port, Dest IP, Dest Port,Throughput(Mbps)\n";
 
     FlowMonitorHelper flowmon;
